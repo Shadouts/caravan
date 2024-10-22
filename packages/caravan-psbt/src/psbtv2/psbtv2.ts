@@ -105,6 +105,11 @@ export class PsbtV2 extends PsbtV2Maps {
   }
 
   set PSBT_GLOBAL_INPUT_COUNT(count: number) {
+    // TODO: When setting a value less than the number of inputMaps, should this
+    // setter warn? If not, perhaps this setter should be removed on a major
+    // version and the only way it is changed is by adding or removing inputs
+    // with the helper methods.
+    // Also see set PSBT_GLOBAL_OUTPUT_COUNT.
     const bw = new BufferWriter();
     bw.writeU8(count);
     this.globalMap.set(KeyType.PSBT_GLOBAL_INPUT_COUNT, bw.render());
@@ -121,6 +126,11 @@ export class PsbtV2 extends PsbtV2Maps {
   }
 
   set PSBT_GLOBAL_OUTPUT_COUNT(count: number) {
+    // TODO: When setting a value less than the number of outputMaps, should
+    // this setter warn? If not, perhaps this setter should be removed on a
+    // major version and the only way it is changed is by adding or removing
+    // outputs with the helper methods.
+    // Also see set PSBT_GLOBAL_INPUT_COUNT.
     const bw = new BufferWriter();
     bw.writeU8(count);
     this.globalMap.set(KeyType.PSBT_GLOBAL_OUTPUT_COUNT, bw.render());
