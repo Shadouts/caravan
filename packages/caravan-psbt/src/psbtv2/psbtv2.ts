@@ -9,6 +9,9 @@ import {
   PsbtGlobalTxModifiableBits,
   SighashType,
   MapSelectorType,
+  PsbtV2AddInputType,
+  PsbtV2AddOutputType,
+  PsbtV2TapBip32DerivationType,
 } from "./types";
 import {
   getNonUniqueKeyTypeValues,
@@ -384,11 +387,32 @@ export class PsbtV2 extends PsbtV2Maps {
     );
   }
 
+  get PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS() {
+    return getNonUniqueKeyTypeValues(
+      this.inputMaps,
+      KeyType.PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS,
+    ) as NonUniqueKeyTypeValue[][];
+  }
+
+  get PSBT_IN_MUSIG2_PUB_NONCE() {
+    return getNonUniqueKeyTypeValues(
+      this.inputMaps,
+      KeyType.PSBT_IN_MUSIG2_PUB_NONCE,
+    ) as NonUniqueKeyTypeValue[][];
+  }
+
+  get PSBT_IN_MUSIG2_PARTIAL_SIG() {
+    return getNonUniqueKeyTypeValues(
+      this.inputMaps,
+      KeyType.PSBT_IN_MUSIG2_PARTIAL_SIG,
+    ) as NonUniqueKeyTypeValue[][];
+  }
+
   get PSBT_IN_PROPRIETARY() {
     return getNonUniqueKeyTypeValues(
       this.inputMaps,
       KeyType.PSBT_IN_PROPRIETARY,
-    );
+    ) as NonUniqueKeyTypeValue[][];
   }
 
   /**
@@ -413,7 +437,7 @@ export class PsbtV2 extends PsbtV2Maps {
     return getNonUniqueKeyTypeValues(
       this.outputMaps,
       KeyType.PSBT_OUT_BIP32_DERIVATION,
-    );
+    ) as NonUniqueKeyTypeValue[][];
   }
 
   get PSBT_OUT_AMOUNT() {
@@ -460,6 +484,20 @@ export class PsbtV2 extends PsbtV2Maps {
     return getNonUniqueKeyTypeValues(
       this.outputMaps,
       KeyType.PSBT_OUT_TAP_BIP32_DERIVATION,
+    ) as NonUniqueKeyTypeValue[][];
+  }
+
+  get PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS() {
+    return getNonUniqueKeyTypeValues(
+      this.outputMaps,
+      KeyType.PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
+    ) as NonUniqueKeyTypeValue[][];
+  }
+
+  get PSBT_OUT_DNSSEC_PROOF() {
+    return getOptionalMappedBytesAsHex(
+      this.outputMaps,
+      KeyType.PSBT_OUT_DNSSEC_PROOF,
     );
   }
 
@@ -467,7 +505,7 @@ export class PsbtV2 extends PsbtV2Maps {
     return getNonUniqueKeyTypeValues(
       this.outputMaps,
       KeyType.PSBT_OUT_PROPRIETARY,
-    );
+    ) as NonUniqueKeyTypeValue[][];
   }
 
   /**
@@ -915,20 +953,13 @@ export class PsbtV2 extends PsbtV2Maps {
     redeemScript,
     witnessScript,
     bip32Derivation,
-  }: {
-    previousTxId: Buffer | string;
-    outputIndex: number;
-    sequence?: number;
-    nonWitnessUtxo?: Buffer;
-    witnessUtxo?: { amount: number; script: Buffer };
-    redeemScript?: Buffer;
-    witnessScript?: Buffer;
-    bip32Derivation?: {
-      pubkey: Buffer;
-      masterFingerprint: Buffer;
-      path: string;
-    }[];
-  }) {
+    tapKeySig,
+    tapScriptSig,
+    tapLeafScript,
+    tapBip32Derivation,
+    tapInternalKey,
+    tapMerkleRoot,
+  }: PsbtV2AddInputType) {
     // TODO: This must accept and add appropriate locktime fields. There is
     // significant validation concerning this step detailed in the BIP0370
     // Constructor role:
@@ -990,6 +1021,54 @@ export class PsbtV2 extends PsbtV2Maps {
         map.set(key, bw.render());
       }
     }
+    if (tapKeySig) {
+      bw.writeBytes(tapKeySig);
+      map.set(KeyType.PSBT_IN_TAP_KEY_SIG, bw.render());
+    }
+    if (tapScriptSig) {
+      for (const scriptSig of tapScriptSig) {
+        bw.writeString(KeyType.PSBT_IN_TAP_SCRIPT_SIG, "hex");
+        bw.writeBytes(scriptSig.pubkey);
+        bw.writeBytes(scriptSig.leafHash);
+        const key = bw.render().toString('hex');
+        bw.writeBytes(scriptSig.signature);
+        map.set(key, bw.render());
+      }
+    }
+    if (tapLeafScript) {
+      for (const script of tapLeafScript) {
+        bw.writeString(KeyType.PSBT_IN_TAP_LEAF_SCRIPT, "hex");
+        bw.writeBytes(script.controlBlock);
+        const key = bw.render().toString('hex');
+        bw.writeBytes(script.script);
+        bw.writeU8(script.leafVersion);
+        map.set(key, bw.render());
+      }
+    }
+    if (tapBip32Derivation) {
+      // This could be unified with its counterpart in addOutput
+      for (const bip32 of tapBip32Derivation) {
+        bw.writeString(KeyType.PSBT_IN_TAP_BIP32_DERIVATION, "hex");
+        bw.writeBytes(bip32.pubkey);
+        const key = bw.render().toString('hex');
+        bw.writeU8(bip32.leafHashes.length)
+        for (const hash of bip32.leafHashes) {
+          bw.writeBytes(hash);
+        }
+        bw.writeBytes(bip32.masterFingerprint);
+        bw.writeBytes(parseDerivationPathNodesToBytes(bip32.path));
+        map.set(key, bw.render());
+      }
+    }
+    if(tapInternalKey) {
+      bw.writeBytes(tapInternalKey);
+      map.set(KeyType.PSBT_IN_TAP_INTERNAL_KEY, bw.render());
+    }
+    if(tapMerkleRoot) {
+      bw.writeBytes(tapMerkleRoot);
+      map.set(KeyType.PSBT_IN_TAP_MERKLE_ROOT, bw.render());
+    }
+
 
     this.PSBT_GLOBAL_INPUT_COUNT = this.inputMaps.push(map);
   }
@@ -1000,17 +1079,10 @@ export class PsbtV2 extends PsbtV2Maps {
     redeemScript,
     witnessScript,
     bip32Derivation,
-  }: {
-    amount: number;
-    script: Buffer;
-    redeemScript?: Buffer;
-    witnessScript?: Buffer;
-    bip32Derivation?: {
-      pubkey: Buffer;
-      masterFingerprint: Buffer;
-      path: string;
-    }[];
-  }) {
+    tapInternalKey,
+    tapTree,
+    tapBip32Derivation,
+  }: PsbtV2AddOutputType) {
     if (!this.isReadyForConstructor) {
       throw Error(
         "The PsbtV2 is not ready for a Constructor. Outputs cannot be added.",
@@ -1041,6 +1113,39 @@ export class PsbtV2 extends PsbtV2Maps {
         bw.writeString(KeyType.PSBT_OUT_BIP32_DERIVATION, "hex");
         bw.writeBytes(bip32.pubkey);
         const key = bw.render().toString("hex");
+        bw.writeBytes(bip32.masterFingerprint);
+        bw.writeBytes(parseDerivationPathNodesToBytes(bip32.path));
+        map.set(key, bw.render());
+      }
+    }
+    if (tapInternalKey) {
+      bw.writeBytes(tapInternalKey);
+      map.set(KeyType.PSBT_OUT_TAP_INTERNAL_KEY, bw.render());
+    }
+    if (tapTree) {
+      for (const leaf of tapTree.leaves) {
+        bw.writeU8(leaf.depth);
+        bw.writeU32(leaf.leafVersion);
+        // TODO: properly transform compact size uints wherever they are implemented in a PSBT.
+        if (leaf.script.length < 253) {
+          bw.writeU8(leaf.script.length)
+        } else {
+          bw.writeU16(leaf.script.length)
+        }
+        bw.writeBytes(leaf.script);
+      }
+      map.set(KeyType.PSBT_OUT_TAP_TREE, bw.render());
+    }
+    if (tapBip32Derivation) {
+      // This could be unified with its counterpart in addInput
+      for (const bip32 of tapBip32Derivation) {
+        bw.writeString(KeyType.PSBT_IN_TAP_BIP32_DERIVATION, "hex");
+        bw.writeBytes(bip32.pubkey);
+        const key = bw.render().toString('hex');
+        bw.writeU8(bip32.leafHashes.length)
+        for (const hash of bip32.leafHashes) {
+          bw.writeBytes(hash);
+        }
         bw.writeBytes(bip32.masterFingerprint);
         bw.writeBytes(parseDerivationPathNodesToBytes(bip32.path));
         map.set(key, bw.render());
@@ -1354,6 +1459,12 @@ export class PsbtV2 extends PsbtV2Maps {
         redeemScript: input.redeemScript,
         witnessScript: input.witnessScript,
         bip32Derivation: input.bip32Derivation,
+        tapKeySig: input.tapKeySig,
+        tapScriptSig: input.tapScriptSig,
+        tapLeafScript: input.tapLeafScript,
+        tapBip32Derivation: input.tapBip32Derivation,
+        tapInternalKey: input.tapInternalKey,
+        tapMerkleRoot: input.tapMerkleRoot,
       });
     }
 
@@ -1370,6 +1481,9 @@ export class PsbtV2 extends PsbtV2Maps {
         redeemScript: output.redeemScript,
         witnessScript: output.witnessScript,
         bip32Derivation: output.bip32Derivation,
+        tapInternalKey: output.tapInternalKey,
+        tapTree: output.tapTree,
+        tapBip32Derivation: output.tapBip32Derivation,
       });
     }
 

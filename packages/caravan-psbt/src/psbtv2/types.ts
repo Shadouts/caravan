@@ -53,6 +53,9 @@ export enum KeyType {
   PSBT_IN_TAP_BIP32_DERIVATION = "16",
   PSBT_IN_TAP_INTERNAL_KEY = "17",
   PSBT_IN_TAP_MERKLE_ROOT = "18",
+  PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS = "1a",
+  PSBT_IN_MUSIG2_PUB_NONCE = "1b",
+  PSBT_IN_MUSIG2_PARTIAL_SIG = "1c",
   PSBT_IN_PROPRIETARY = "fc",
 
   PSBT_OUT_REDEEM_SCRIPT = "00",
@@ -63,6 +66,8 @@ export enum KeyType {
   PSBT_OUT_TAP_INTERNAL_KEY = "05",
   PSBT_OUT_TAP_TREE = "06",
   PSBT_OUT_TAP_BIP32_DERIVATION = "07",
+  PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS = "08",
+  PSBT_OUT_DNSSEC_PROOF = "35",
   PSBT_OUT_PROPRIETARY = "fc",
 }
 
@@ -89,3 +94,65 @@ export type MapSelectorType =
   | "global"
   | ["inputs", InputOutputIndexType]
   | ["outputs", InputOutputIndexType];
+
+export type PsbtV2AddInputType = {
+  previousTxId: Buffer | string;
+  outputIndex: number;
+  sequence?: number;
+  nonWitnessUtxo?: Buffer;
+  witnessUtxo?: { amount: number; script: Buffer };
+  redeemScript?: Buffer;
+  witnessScript?: Buffer;
+  bip32Derivation?: {
+    pubkey: Buffer;
+    masterFingerprint: Buffer;
+    path: string;
+  }[];
+  tapKeySig?: Buffer;
+  tapScriptSig?: {
+    leafHash: Buffer;
+    pubkey: Buffer;
+    signature: Buffer;
+  }[];
+  tapLeafScript?: {
+    controlBlock: Buffer;
+    leafVersion: number;
+    script: Buffer;
+  }[];
+  tapBip32Derivation?: {
+    // This could be unified with its counterpart in addOutput
+    leafHashes: Buffer[];
+    masterFingerprint: Buffer;
+    pubkey: Buffer;
+    path: string;
+  }[];
+  tapInternalKey?: Buffer;
+  tapMerkleRoot?: Buffer;
+};
+
+export type PsbtV2AddOutputType {
+  amount: number;
+  script: Buffer;
+  redeemScript?: Buffer;
+  witnessScript?: Buffer;
+  bip32Derivation?: {
+    pubkey: Buffer;
+    masterFingerprint: Buffer;
+    path: string;
+  }[];
+  tapInternalKey?: Buffer;
+  tapTree?: {
+    leaves: {
+      depth: number;
+      leafVersion: number;
+      script: Buffer;
+    }[];
+  };
+  tapBip32Derivation?: {
+    // This could be unified with its counterpart in addInput
+    leafHashes: Buffer[];
+    masterFingerprint: Buffer;
+    pubkey: Buffer;
+    path: string;
+  }[];
+};
